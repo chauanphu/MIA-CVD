@@ -5,14 +5,19 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.42.4",
     "jupyter>=1.1.1",
     "matplotlib>=3.10.7",
     "notebook>=7.4.2",
     "numpy>=2.2.6",
     "pandas>=2.3.3",
+    "pg8000>=1.31.5",
     "psycopg2-binary>=2.9.10",
     "pyspark>=3.5.5",
     "scikit-learn>=1.7.2",
     "seaborn>=0.13.2",
+    "sqlalchemy>=2.0.44",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
     "xgboost>=3.1.1",
 ]
