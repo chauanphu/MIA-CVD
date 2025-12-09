@@ -4,27 +4,30 @@ import torch.optim as optim
 from sklearn.metrics import f1_score, accuracy_score
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from common import MedicalImageData, SimpleCNN
+from common import MedicalImageData, AssymetricLoss
 from torchvision.transforms import v2
+from torchvision.models import densenet121, DenseNet121_Weights
 from torch.utils.data import DataLoader
 
 # 1. IMPORT WANDB
 import wandb
 
 # 2. DEFINE HYPERPARAMETERS (Organize them in a dict)
+ARCHITECTURE = "DenseNet121"
 hyperparameters = {
     "learning_rate": 0.001,
-    "epochs": 10,
-    "batch_size": 32,
-    "architecture": "SimpleCNN",
-    "loss_func": "BCEWithLogitsLoss + Weighted",
+    "epochs": 50,
+    "batch_size": 64,
+    "architecture": ARCHITECTURE,
+    "loss_func": "BCEWithLogitsLoss",
+    "resolution": "256x256",
     "dataset": "ChesX-ray8"
 }
 
 # 3. INITIALIZE WANDB
 wandb.init(
     project="multi-label-experiment", # Group runs together
-    name="experiment_run_1",          # Name of this specific run
+    name="EXP-003-C",          # Name of this specific run
     config=hyperparameters            # Pass the config for tracking
 )
 
@@ -50,9 +53,8 @@ train_ids, test_ids = train_test_split(
 
 # Create datasets
 transform = v2.Compose([
-    v2.RandomResizedCrop(size=(224, 224), antialias=True),
+    v2.Resize(size=(256, 256), antialias=True),
     v2.ToDtype(torch.float32, scale=True), # Converts [0-255] to [0.0-1.0],
-    v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 train_set = MedicalImageData(
@@ -74,7 +76,11 @@ test_loader = DataLoader(test_set, batch_size=wandb.config.batch_size, shuffle=F
 # Mock Model & Data Setup
 
 ## SETTING UP THE MODEL
-model = SimpleCNN(num_classes=len(label_counts))
+# Load pretrained ResNet50 and modify for multi-label classification
+model = densenet121(weights=DenseNet121_Weights.IMAGENET1K_V1)
+num_features = model.classifier.in_features
+model.classifier = nn.Linear(num_features, len(label_counts))
+
 criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -105,15 +111,15 @@ for epoch in range(wandb.config.epochs):
 
         # --- CALCULATE METRICS ---
         # Convert logits to binary predictions
-        preds = (torch.sigmoid(outputs) > 0.5).float()
+        with torch.no_grad():
+            preds = (torch.sigmoid(outputs) > 0.5).float()
         
         # Calculate F1 (Macro) using CPU/Numpy
-        train_f1 = f1_score(labels.cpu().numpy(), preds.detach().cpu().numpy(), average='macro')
+        train_f1 = f1_score(labels.cpu().numpy(), preds.detach().cpu().numpy(), average='macro', zero_division=0)
         accuracy = accuracy_score(labels.cpu().numpy(), preds.detach().cpu().numpy())
         batch_loss += loss.item()
         batch_f1 += train_f1
         batch_accuracy += accuracy
-
     # AVERAGE LOSS OVER EPOCH
     loss = batch_loss / len(train_loader)
     f1 = batch_f1 / len(train_loader)
@@ -127,10 +133,10 @@ for epoch in range(wandb.config.epochs):
         "train_accuracy": accuracy,
         "learning_rate": optimizer.param_groups[0]['lr']
     })
-    
+    # For every 10 epochs,
     print(f"Epoch {epoch}: Loss {loss:.4f}")
-
-
+# Save the model at the end of training
+torch.save(model.state_dict(), f"weights/{ARCHITECTURE.lower()}_model.pth")
 # 6. FINISH THE RUN
 # Essential in Jupyter Notebooks to signal the run is over
 wandb.finish()

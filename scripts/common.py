@@ -34,26 +34,33 @@ class SimpleCNN(nn.Module):
         x = self.classifier(x)
         return x
 
-def filter_labels(df, threshold):
-    """
-    Filters labels based on a frequency threshold.
-    Args:
-        labels (list of str): List of all labels.
-        threshold (int): Minimum frequency for a label to be kept.
-    Returns:
-        list of str: Filtered labels.
-    """
-    # Count occurrences of each label
-    label_counts = {}
-    for row in df['Finding Labels']:
-        for label in row.split('|'):
-            label = label.strip()
-            if label:
-                label_counts[label] = label_counts.get(label, 0) + 1
-    # Filter labels based on threshold
-    filtered_labels = [label for label, count in label_counts.items() if count >= threshold]
-    return filtered_labels
+class AssymetricLoss(nn.Module):
+    def __init__(self, gamma_pos=0, gamma_neg=4, clip=0.05, eps=1e-8):
+        super(AssymetricLoss, self).__init__()
+        self.gamma_pos = gamma_pos
+        self.gamma_neg = gamma_neg
+        self.clip = clip
+        self.eps = eps
 
+    def forward(self, x, y):
+        # x: input logits, y: targets (multi-hot)
+        # Calculating Probabilities
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
+
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
+
+        # Basic Cross Entropy
+        los_pos = y * torch.log(xs_pos.clamp(min=1e-8))
+        los_neg = (1 - y) * torch.log(xs_neg.clamp(min=1e-8))
+
+        # Asymmetric Focusing
+        loss = - (self.gamma_pos * los_pos + self.gamma_neg * los_neg)
+        return loss.sum()
+    
 class MedicalImageData(torch.utils.data.Dataset):
     def __init__(self, image_path: str, annot_paths: str, transform=None, ids=None):
         self.img_labels = pd.read_csv(annot_paths)
