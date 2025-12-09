@@ -19,5 +19,6 @@ dependencies = [
     "sqlalchemy>=2.0.44",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
+    "wandb>=0.23.1",
     "xgboost>=3.1.1",
 ]

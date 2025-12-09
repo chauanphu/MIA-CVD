@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  wandb:
+    image: wandb/local
+    container_name: wandb-local
+    ports:
+      - "8080:8080"
+    volumes:
+      - wandb_data:/vol
+    environment:
+      # Optional: Set to true if you need to access it from other containers
+      - LOCAL_RESTORE=true 
+    restart: unless-stopped
+
+volumes:
+  wandb_data:
